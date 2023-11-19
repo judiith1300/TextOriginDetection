@@ -26,7 +26,6 @@ def paraphrase_text(text):
     paraphrased_text = tokenizer_paraphrase.decode(paraphrased_ids[0], skip_special_tokens=True)
     return paraphrased_text
 
-# Load the dataset and select a random sample of 100 rows
 dataset = load_dataset("symanto/autextification2023", 'detection_en')
 df_train = dataset['train'].to_pandas()
 df_test = dataset['test'].to_pandas()
