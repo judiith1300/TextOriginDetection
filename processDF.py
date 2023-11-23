@@ -1,38 +1,57 @@
 from datasets import load_dataset
-import pandas as pd
-import random
-from transformers import pipeline,  T5ForConditionalGeneration, T5Tokenizer, BartForConditionalGeneration, BartTokenizer
-pd.set_option('display.max_columns', 10)
-pd.set_option('display.max_rows', 1000)
-pd.set_option('display.width', 300)
+import json
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, BartTokenizer, BartForConditionalGeneration
 
-def summarize_with_t5(text):
-    model_name = 't5-large'
-    model = T5ForConditionalGeneration.from_pretrained(model_name)
-    tokenizer = T5Tokenizer.from_pretrained(model_name)
-    preprocess_text = "summarize: " + text
-    tokenized_text = tokenizer.encode(preprocess_text, return_tensors="pt", max_length=512, truncation=True)
-    summary_ids = model.generate(tokenized_text, max_length=150, num_beams=4, early_stopping=True)
-    summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
-    return summary
 
+def Summarize(text):
+    model = AutoModelForSeq2SeqLM.from_pretrained("facebook/bart-large-cnn")
+    tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large-cnn")
+
+    segment_length = 1024
+    segments = [text[i:i + segment_length] for i in range(0, len(text), segment_length)]
+
+    summarized_text = ""
+    for segment in segments:
+        inputs = tokenizer(segment, return_tensors="pt", max_length=1024, truncation=True)
+        summary_ids = model.generate(inputs.input_ids, max_length=1024, do_sample=True)
+        summarized_text += tokenizer.decode(summary_ids[0], skip_special_tokens=True) + " "
+
+    return summarized_text
 def paraphrase_text(text):
+
     model_name_paraphrase = 'facebook/bart-large-cnn'
     model_paraphrase = BartForConditionalGeneration.from_pretrained(model_name_paraphrase)
     tokenizer_paraphrase = BartTokenizer.from_pretrained(model_name_paraphrase)
 
-    inputs = tokenizer_paraphrase([text], return_tensors='pt', max_length=1024, truncation=True)
-    paraphrased_ids = model_paraphrase.generate(**inputs)
-    paraphrased_text = tokenizer_paraphrase.decode(paraphrased_ids[0], skip_special_tokens=True)
+    segment_length = 1024
+    segments = [text[i:i + segment_length] for i in range(0, len(text), segment_length)]
+
+    paraphrased_text = ""
+    for segment in segments:
+        inputs = tokenizer_paraphrase(segment, return_tensors="pt", max_length=1024, truncation=True)
+        paraphrased_ids = model_paraphrase.generate(inputs.input_ids, max_length=1024, do_sample=True)
+        paraphrased_text += tokenizer_paraphrase.decode(paraphrased_ids[0], skip_special_tokens=True) + " "
     return paraphrased_text
 
 dataset = load_dataset("symanto/autextification2023", 'detection_en')
-df_train = dataset['train'].to_pandas()
-df_test = dataset['test'].to_pandas()
-df = pd.concat([df_train, df_test], ignore_index=True).sample(n=5)
+all_text_list = []
+for split in dataset.keys():
+    split_text_list = dataset[split]['text']
+    all_text_list.extend(split_text_list)
+all_text_list = all_text_list[:100]
+all_text = ' '.join(all_text_list)
+summarization = Summarize(all_text)
+paraphrasing = paraphrase_text(summarization)
 
-df['summary_text'] = df['text'].apply(summarize_with_t5)
-#df['models_applied'] = 't5-large'
-df['paraphrased_summary'] = df['summary_text'].apply(paraphrase_text)
+output_data = {
+    "original_text": all_text,
+    "summary": summarization,
+    "paraphrased_text": paraphrasing
+}
 
-df.to_csv('test.csv')
+output_file = 'output_data.json'
+with open(output_file, 'w') as json_file:
+    json.dump(output_data, json_file, indent=4)
+
+print(f"Datos guardados exitosamente en '{output_file}'")
+
